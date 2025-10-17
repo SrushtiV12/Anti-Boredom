@@ -29,11 +29,17 @@ Tech
 - Open Library Search API
 - Vanilla JavaScript, no backend
 
-Screenshot
+Screenshots
 ----------
-Add a screenshot at `media/book-library-demo.png` and reference it here.
+
+<img width="1887" height="550" alt="Screenshot 2025-10-17 023415" src="https://github.com/user-attachments/assets/917aa33b-df85-4853-9dd5-04dfe2b84647" />
+<img width="1716" height="752" alt="Screenshot 2025-10-17 145322" src="https://github.com/user-attachments/assets/082f27a9-6a83-4db4-a43d-52ee2af3014f" />
+<img width="368" height="506" alt="Screenshot 2025-10-17 145416" src="https://github.com/user-attachments/assets/8dbd8632-c40f-403a-b2ff-f6bda7cb70f4" />
+
+
 
 Contributors
+
 ------------
 - @SrushtiV12
 
