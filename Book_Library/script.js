@@ -50,6 +50,54 @@ async function fetchBooks(query = 'bestseller books') {
   }
 }
 
+// Fetch by subject (genre)
+async function fetchBooksBySubject(subject) {
+  showLoader(true);
+  try {
+    // Try subject param first
+    const url = `https://openlibrary.org/search.json?subject=${encodeURIComponent(subject)}&limit=36`;
+    let res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    let data = await res.json();
+    let docs = data.docs || [];
+    if (docs.length) return docs;
+    // Fallback: query with subject:term
+    res = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent('subject:' + subject)}&limit=36`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+    return data.docs || [];
+  } catch (e) {
+    console.error('Subject fetch failed', e);
+    return [];
+  } finally {
+    showLoader(false);
+  }
+}
+
+// Curated minimal samples per genre (fallback)
+const GENRE_SAMPLES = {
+  romance: [
+    { title: 'Pride and Prejudice', author_name: ['Jane Austen'], _coverUrl: 'https://covers.openlibrary.org/b/id/8221251-L.jpg', key: 'sample_romance_1' },
+    { title: 'Jane Eyre', author_name: ['Charlotte Brontë'], _coverUrl: 'https://covers.openlibrary.org/b/id/8231856-L.jpg', key: 'sample_romance_2' },
+  ],
+  fantasy: [
+    { title: 'The Hobbit', author_name: ['J.R.R. Tolkien'], _coverUrl: 'https://covers.openlibrary.org/b/id/6979861-L.jpg', key: 'sample_fantasy_1' },
+    { title: 'Harry Potter and the Sorcerer\'s Stone', author_name: ['J.K. Rowling'], _coverUrl: 'https://covers.openlibrary.org/b/id/7884866-L.jpg', key: 'sample_fantasy_2' },
+  ],
+  science_fiction: [
+    { title: 'Dune', author_name: ['Frank Herbert'], _coverUrl: 'https://covers.openlibrary.org/b/id/8165260-L.jpg', key: 'sample_scifi_1' },
+    { title: 'Ender\'s Game', author_name: ['Orson Scott Card'], _coverUrl: 'https://covers.openlibrary.org/b/id/9251892-L.jpg', key: 'sample_scifi_2' },
+  ],
+  mystery: [
+    { title: 'The Hound of the Baskervilles', author_name: ['Arthur Conan Doyle'], _coverUrl: 'https://covers.openlibrary.org/b/id/8235111-L.jpg', key: 'sample_mystery_1' },
+    { title: 'Gone Girl', author_name: ['Gillian Flynn'], _coverUrl: 'https://covers.openlibrary.org/b/id/8135462-L.jpg', key: 'sample_mystery_2' },
+  ],
+  horror: [
+    { title: 'The Shining', author_name: ['Stephen King'], _coverUrl: 'https://covers.openlibrary.org/b/id/8319256-L.jpg', key: 'sample_horror_1' },
+    { title: 'Dracula', author_name: ['Bram Stoker'], _coverUrl: 'https://covers.openlibrary.org/b/id/8109216-L.jpg', key: 'sample_horror_2' },
+  ],
+};
+
 // Suggestions 
 let suggestIndex = -1;
 let suggestTimer;
@@ -92,6 +140,7 @@ function triggerSearch() {
   fetchBooks(q).then(list => {
     state.books = list;
     buildAuthors(list);
+    // keep static genres per request
     renderBookOfDay(list);
     applyFiltersAndRender();
   });
@@ -147,7 +196,9 @@ function renderBooks(list) {
     const authors = b.author_name ? b.author_name.join(', ') : 'Unknown';
     // Generate cover image URL - prioritize real book covers
     let cover;
-    if (b.cover_i) {
+    if (b._coverUrl) {
+      cover = b._coverUrl;
+    } else if (b.cover_i) {
       cover = `https://covers.openlibrary.org/b/id/${b.cover_i}-L.jpg`;
       console.log(`Using cover_i for "${title}": ${cover}`);
     } else if (b.isbn && b.isbn.length > 0) {
@@ -317,6 +368,37 @@ function buildAuthors(list) {
   filterAuthor.innerHTML = '<option value="">All authors</option>' + authors.map(a => `<option value="${a}">${a}</option>`).join('');
 }
 
+// Populate genre filter from subjects
+function normalizeSubject(s) {
+  return String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s_-]/g, '')
+    .replace(/\s+/g, '_')
+    .trim();
+}
+
+function displaySubject(s) {
+  return String(s || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function buildGenres(list) {
+  if (!filterGenre) return;
+  const subjectSet = new Set();
+  (list || []).forEach(b => {
+    (b.subject || []).forEach(s => {
+      const norm = normalizeSubject(s);
+      if (norm) subjectSet.add(norm);
+    });
+  });
+  const subjects = Array.from(subjectSet).sort();
+  const options = ['<option value="">All genres</option>'].concat(
+    subjects.slice(0, 60).map(s => `<option value="${s}">${displaySubject(s)}</option>`)
+  );
+  filterGenre.innerHTML = options.join('');
+}
+
 // Sorting and filtering
 function sortBooks(list, mode) {
   const arr = [...list];
@@ -333,6 +415,18 @@ function sortBooks(list, mode) {
       const bRating = b.ratings_average ? parseFloat(b.ratings_average) : 0;
       return bRating - aRating;
     });
+    case 'genre-asc':
+      return arr.sort((a,b) => {
+        const ag = normalizeSubject(((a.subject||[])[0]) || '');
+        const bg = normalizeSubject(((b.subject||[])[0]) || '');
+        return ag.localeCompare(bg);
+      });
+    case 'genre-desc':
+      return arr.sort((a,b) => {
+        const ag = normalizeSubject(((a.subject||[])[0]) || '');
+        const bg = normalizeSubject(((b.subject||[])[0]) || '');
+        return bg.localeCompare(ag);
+      });
     default: return arr;
   }
 }
@@ -438,6 +532,7 @@ async function init() {
   
   state.books = books;
   buildAuthors(state.books);
+  // keep static genres per request
   renderBookOfDay(state.books);
   applyFiltersAndRender();
 
@@ -470,7 +565,27 @@ async function init() {
   // Sort/filters
   sortSelect.addEventListener('change', () => { state.sort = sortSelect.value; applyFiltersAndRender(); });
   filterAuthor.addEventListener('change', applyFiltersAndRender);
-  filterGenre.addEventListener('change', applyFiltersAndRender);
+  filterGenre.addEventListener('change', async () => {
+    const val = filterGenre.value;
+    if (val) {
+      const subjectTerm = val.replace(/_/g, ' ');
+      let list = await fetchBooksBySubject(subjectTerm);
+      if (!list || !list.length) {
+        // Try broader keyword query
+        list = await fetchBooks(`${subjectTerm} books`);
+      }
+      if (!list || !list.length) {
+        // Final curated fallback
+        list = (GENRE_SAMPLES && GENRE_SAMPLES[val]) ? GENRE_SAMPLES[val] : [];
+      }
+      if (list && list.length) {
+        state.books = list;
+        buildAuthors(list);
+        renderBookOfDay(list);
+      }
+    }
+    applyFiltersAndRender();
+  });
 
   // Views
   tabAll.addEventListener('click', () => { state.view = 'all'; applyFiltersAndRender(); });
